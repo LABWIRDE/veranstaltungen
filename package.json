@@ -1,0 +1,11 @@
+{
+  "name": "wirde-veranstaltungen",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "node-ical": "0.27.3"
+  }
+}
