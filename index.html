@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Veranstaltungen – WIR.DE</title>
+<meta name="description" content="Aktuelle Veranstaltungen von WIR.DE Aktive Nachbarn in Berlin-Lichtenberg">
+<style>
+:root{--bg:#faf8f5;--card:#fff;--ink:#1f2328;--mute:#5f6670;--line:#e6e1da;--acc:#1f6f5c;--acc-soft:#e3f0ec;--chip:#f1ede7}
+@media (prefers-color-scheme:dark){:root{--bg:#16181b;--card:#1f2226;--ink:#eceae6;--mute:#a3a8ae;--line:#33373c;--acc:#5cc3a6;--acc-soft:#1f3a33;--chip:#2a2e33}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:24px 16px 48px}
+header h1{font-size:1.8rem;margin:0 0 4px;letter-spacing:-.01em}
+header p{margin:0;color:var(--mute)}
+.filter{display:grid;gap:12px;margin:24px 0 8px}
+.gruppe{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.gruppe b{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin-right:4px;min-width:64px}
+.chip{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:999px;padding:4px 12px;font:inherit;font-size:.9rem;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#fff}
+@media (prefers-color-scheme:dark){.chip[aria-pressed="true"]{color:#0d1f1a}}
+.tag{font-weight:600;margin:28px 0 8px;color:var(--acc);font-size:.95rem}
+.termin{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:grid;grid-template-columns:110px 1fr;gap:4px 16px}
+.zeit{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--mute);font-size:.95rem;padding-top:1px}
+.titel{font-weight:600;margin:0}
+.meta{grid-column:2;color:var(--mute);font-size:.9rem;display:flex;flex-wrap:wrap;gap:4px 12px}
+.pill{background:var(--acc-soft);color:var(--acc);border-radius:6px;padding:0 8px;font-size:.8rem}
+.leer{color:var(--mute);padding:32px 0}
+footer{margin-top:32px;color:var(--mute);font-size:.8rem}
+@media (max-width:520px){.termin{grid-template-columns:1fr}.meta{grid-column:1}}
+.embed header,.embed footer{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Veranstaltungen</h1>
+    <p>WIR.DE Aktive Nachbarn · Berlin</p>
+  </header>
+  <div class="filter" id="filter"></div>
+  <main id="liste"><p class="leer">Termine werden geladen …</p></main>
+  <footer id="stand"></footer>
+</div>
+<script>
+(async function () {
+  const p = new URLSearchParams(location.search);
+  if (p.get("embed") === "1") document.body.classList.add("embed");
+  const auswahl = { projekt: p.get("projekt") || "", ort: p.get("ort") || "", typ: p.get("typ") || "" };
+
+  let daten;
+  try {
+    daten = await (await fetch("events.json", { cache: "no-cache" })).json();
+  } catch (e) {
+    document.getElementById("liste").innerHTML = '<p class="leer">Termine konnten nicht geladen werden.</p>';
+    return;
+  }
+  const namen = daten.projekte || {};
+  const jetzt = new Date();
+  const termine = (daten.termine || []).filter(t => new Date(t.ende || t.start) >= jetzt);
+
+  const tz = { timeZone: "Europe/Berlin" };
+  const fTag = new Intl.DateTimeFormat("de-DE", { ...tz, weekday: "long" });
+  const fDatum = new Intl.DateTimeFormat("de-DE", { ...tz, day: "2-digit", month: "2-digit", year: "2-digit" });
+  const fZeit = new Intl.DateTimeFormat("de-DE", { ...tz, hour: "2-digit", minute: "2-digit" });
+  const projektName = c => namen[c] || c;
+
+  const werte = key => [...new Set(termine.flatMap(t => key === "projekt" ? t.projekte : [key === "ort" ? t.ortKurz : t.typ]).filter(Boolean))].sort();
+  const gruppen = [["projekt", "Projekt"], ["ort", "Ort"], ["typ", "Format"]];
+
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function filterZeichnen() {
+    const box = document.getElementById("filter");
+    box.innerHTML = "";
+    for (const [key, label] of gruppen) {
+      const opts = werte(key);
+      if (opts.length < 2 && !auswahl[key]) continue;
+      const g = el("div", "gruppe");
+      g.appendChild(el("b", null, label));
+      for (const v of ["", ...opts]) {
+        const b = el("button", "chip", v === "" ? "Alle" : key === "projekt" ? projektName(v) : v);
+        b.type = "button";
+        b.setAttribute("aria-pressed", String(auswahl[key] === v));
+        b.onclick = () => { auswahl[key] = v; urlSetzen(); zeichnen(); };
+        g.appendChild(b);
+      }
+      box.appendChild(g);
+    }
+  }
+
+  function urlSetzen() {
+    const q = new URLSearchParams();
+    if (p.get("embed") === "1") q.set("embed", "1");
+    for (const k in auswahl) if (auswahl[k]) q.set(k, auswahl[k]);
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : ""));
+  }
+
+  function zeichnen() {
+    filterZeichnen();
+    const liste = document.getElementById("liste");
+    liste.innerHTML = "";
+    const sicht = termine.filter(t =>
+      (!auswahl.projekt || t.projekte.includes(auswahl.projekt)) &&
+      (!auswahl.ort || t.ortKurz === auswahl.ort) &&
+      (!auswahl.typ || t.typ === auswahl.typ));
+    if (!sicht.length) { liste.appendChild(el("p", "leer", "Zurzeit keine Termine für diese Auswahl.")); return; }
+    let letzterTag = "";
+    for (const t of sicht) {
+      const s = new Date(t.start), e = t.ende ? new Date(t.ende) : null;
+      const tag = fTag.format(s) + ", " + fDatum.format(s);
+      if (tag !== letzterTag) { liste.appendChild(el("h2", "tag", tag)); letzterTag = tag; }
+      const k = el("article", "termin");
+      k.appendChild(el("div", "zeit", t.ganztags ? "ganztägig" : fZeit.format(s) + (e ? "–" + fZeit.format(e) : "")));
+      k.appendChild(el("p", "titel", t.titel));
+      const m = el("div", "meta");
+      if (t.ort) m.appendChild(el("span", null, "📍 " + t.ort));
+      if (t.typ) m.appendChild(el("span", "pill", t.typ));
+      for (const c of t.projekte) m.appendChild(el("span", "pill", projektName(c)));
+      k.appendChild(m);
+      liste.appendChild(k);
+    }
+  }
+
+  zeichnen();
+  if (daten.aktualisiert) document.getElementById("stand").textContent =
+    "Stand: " + fDatum.format(new Date(daten.aktualisiert)) + ", " + fZeit.format(new Date(daten.aktualisiert)) + " Uhr";
+})();
+</script>
+</body>
+</html>
