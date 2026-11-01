@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Veranstaltungen – WIR.DE</title>
+<title>Veranstaltungen · Мероприятия – WIR.DE</title>
 <meta name="description" content="Aktuelle Veranstaltungen von WIR.DE Aktive Nachbarn in Berlin-Lichtenberg">
 <style>
 :root{--bg:#faf8f5;--card:#fff;--ink:#1f2328;--mute:#5f6670;--line:#e6e1da;--acc:#1f6f5c;--acc-soft:#e3f0ec;--chip:#f1ede7}
@@ -28,57 +28,98 @@ header p{margin:0;color:var(--mute)}
 .leer{color:var(--mute);padding:32px 0}
 footer{margin-top:32px;color:var(--mute);font-size:.8rem}
 @media (max-width:520px){.termin{grid-template-columns:1fr}.meta{grid-column:1}}
-.embed header,.embed footer{display:none}
+.kopf{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.sprache{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;flex-shrink:0;margin-top:6px}
+.sprache button{border:0;background:transparent;color:var(--mute);font:inherit;font-size:.85rem;font-weight:600;padding:4px 12px;cursor:pointer}
+.sprache button[aria-pressed="true"]{background:var(--acc);color:#fff}
+@media (prefers-color-scheme:dark){.sprache button[aria-pressed="true"]{color:#0d1f1a}}
+.embed .kopf,.embed footer{display:none}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>Veranstaltungen</h1>
-    <p>WIR.DE Aktive Nachbarn · Berlin</p>
-  </header>
+  <div class="kopf">
+    <header>
+      <h1 id="h1">Veranstaltungen</h1>
+      <p>WIR.DE Aktive Nachbarn · Berlin</p>
+    </header>
+    <div class="sprache" id="sprache" role="group" aria-label="Sprache / Язык">
+      <button type="button" data-l="de">DE</button><button type="button" data-l="ru">RU</button>
+    </div>
+  </div>
   <div class="filter" id="filter"></div>
-  <main id="liste"><p class="leer">Termine werden geladen …</p></main>
+  <main id="liste"><p class="leer">…</p></main>
   <footer id="stand"></footer>
 </div>
 <script>
 (async function () {
+  const T = {
+    de: { titel: "Veranstaltungen", alle: "Alle", projekt: "Projekt", ort: "Ort", typ: "Format",
+          leer: "Zurzeit keine Termine für diese Auswahl.", fehler: "Termine konnten nicht geladen werden.",
+          laden: "Termine werden geladen …", ganztags: "ganztägig", stand: "Stand", uhr: " Uhr", locale: "de-DE" },
+    ru: { titel: "Мероприятия", alle: "Все", projekt: "Проект", ort: "Место", typ: "Формат",
+          leer: "Сейчас мероприятий по этому выбору нет.", fehler: "Не удалось загрузить мероприятия.",
+          laden: "Загружаем мероприятия …", ganztags: "весь день", stand: "Обновлено", uhr: "", locale: "ru-RU" }
+  };
+  // Übersetzung der Formate (Werte aus dem Register) für die deutsche Ansicht
+  const TYP_DE = { "Встреча": "Treffen", "Воркшоп": "Workshop", "Фестиваль": "Festival" };
+
   const p = new URLSearchParams(location.search);
-  if (p.get("embed") === "1") document.body.classList.add("embed");
+  const embed = p.get("embed") === "1";
+  if (embed) document.body.classList.add("embed");
   const auswahl = { projekt: p.get("projekt") || "", ort: p.get("ort") || "", typ: p.get("typ") || "" };
+
+  let gespeichert = "";
+  try { gespeichert = localStorage.getItem("lang") || ""; } catch (e) {}
+  let lang = p.get("lang") || gespeichert || ((navigator.language || "").toLowerCase().startsWith("ru") ? "ru" : "de");
+  if (!T[lang]) lang = "de";
+
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  document.getElementById("liste").replaceChildren(el("p", "leer", T[lang].laden));
 
   let daten;
   try {
     daten = await (await fetch("events.json", { cache: "no-cache" })).json();
   } catch (e) {
-    document.getElementById("liste").innerHTML = '<p class="leer">Termine konnten nicht geladen werden.</p>';
+    document.getElementById("liste").replaceChildren(el("p", "leer", T[lang].fehler));
     return;
   }
   const namen = daten.projekte || {};
   const jetzt = new Date();
   const termine = (daten.termine || []).filter(t => new Date(t.ende || t.start) >= jetzt);
-
   const tz = { timeZone: "Europe/Berlin" };
-  const fTag = new Intl.DateTimeFormat("de-DE", { ...tz, weekday: "long" });
-  const fDatum = new Intl.DateTimeFormat("de-DE", { ...tz, day: "2-digit", month: "2-digit", year: "2-digit" });
-  const fZeit = new Intl.DateTimeFormat("de-DE", { ...tz, hour: "2-digit", minute: "2-digit" });
   const projektName = c => namen[c] || c;
-
+  const typName = v => lang === "de" ? (TYP_DE[v] || v) : v;
   const werte = key => [...new Set(termine.flatMap(t => key === "projekt" ? t.projekte : [key === "ort" ? t.ortKurz : t.typ]).filter(Boolean))].sort();
-  const gruppen = [["projekt", "Projekt"], ["ort", "Ort"], ["typ", "Format"]];
 
-  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  let fTag, fDatum, fZeit;
+  function formate() {
+    const loc = T[lang].locale;
+    fTag = new Intl.DateTimeFormat(loc, { ...tz, weekday: "long" });
+    fDatum = new Intl.DateTimeFormat("de-DE", { ...tz, day: "2-digit", month: "2-digit", year: "2-digit" });
+    fZeit = new Intl.DateTimeFormat("de-DE", { ...tz, hour: "2-digit", minute: "2-digit" });
+  }
+
+  function urlSetzen() {
+    const q = new URLSearchParams();
+    if (embed) q.set("embed", "1");
+    if (p.get("lang")) q.set("lang", lang);
+    for (const k in auswahl) if (auswahl[k]) q.set(k, auswahl[k]);
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : ""));
+  }
 
   function filterZeichnen() {
     const box = document.getElementById("filter");
     box.innerHTML = "";
-    for (const [key, label] of gruppen) {
+    for (const key of ["projekt", "ort", "typ"]) {
       const opts = werte(key);
       if (opts.length < 2 && !auswahl[key]) continue;
       const g = el("div", "gruppe");
-      g.appendChild(el("b", null, label));
+      g.appendChild(el("b", null, T[lang][key]));
       for (const v of ["", ...opts]) {
-        const b = el("button", "chip", v === "" ? "Alle" : key === "projekt" ? projektName(v) : v);
+        const label = v === "" ? T[lang].alle : key === "projekt" ? projektName(v) : key === "typ" ? typName(v) : v;
+        const b = el("button", "chip", label);
         b.type = "button";
         b.setAttribute("aria-pressed", String(auswahl[key] === v));
         b.onclick = () => { auswahl[key] = v; urlSetzen(); zeichnen(); };
@@ -88,14 +129,12 @@ footer{margin-top:32px;color:var(--mute);font-size:.8rem}
     }
   }
 
-  function urlSetzen() {
-    const q = new URLSearchParams();
-    if (p.get("embed") === "1") q.set("embed", "1");
-    for (const k in auswahl) if (auswahl[k]) q.set(k, auswahl[k]);
-    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : ""));
-  }
-
   function zeichnen() {
+    formate();
+    document.documentElement.lang = lang;
+    document.title = T[lang].titel + " – WIR.DE";
+    document.getElementById("h1").textContent = T[lang].titel;
+    for (const b of document.querySelectorAll("#sprache button")) b.setAttribute("aria-pressed", String(b.dataset.l === lang));
     filterZeichnen();
     const liste = document.getElementById("liste");
     liste.innerHTML = "";
@@ -103,27 +142,36 @@ footer{margin-top:32px;color:var(--mute);font-size:.8rem}
       (!auswahl.projekt || t.projekte.includes(auswahl.projekt)) &&
       (!auswahl.ort || t.ortKurz === auswahl.ort) &&
       (!auswahl.typ || t.typ === auswahl.typ));
-    if (!sicht.length) { liste.appendChild(el("p", "leer", "Zurzeit keine Termine für diese Auswahl.")); return; }
+    if (!sicht.length) liste.appendChild(el("p", "leer", T[lang].leer));
     let letzterTag = "";
     for (const t of sicht) {
       const s = new Date(t.start), e = t.ende ? new Date(t.ende) : null;
-      const tag = fTag.format(s) + ", " + fDatum.format(s);
+      let wt = fTag.format(s); wt = wt.charAt(0).toUpperCase() + wt.slice(1);
+      const tag = wt + ", " + fDatum.format(s);
       if (tag !== letzterTag) { liste.appendChild(el("h2", "tag", tag)); letzterTag = tag; }
       const k = el("article", "termin");
-      k.appendChild(el("div", "zeit", t.ganztags ? "ganztägig" : fZeit.format(s) + (e ? "–" + fZeit.format(e) : "")));
+      k.appendChild(el("div", "zeit", t.ganztags ? T[lang].ganztags : fZeit.format(s) + (e ? "–" + fZeit.format(e) : "")));
       k.appendChild(el("p", "titel", t.titel));
       const m = el("div", "meta");
       if (t.ort) m.appendChild(el("span", null, "📍 " + t.ort));
-      if (t.typ) m.appendChild(el("span", "pill", t.typ));
+      if (t.typ) m.appendChild(el("span", "pill", typName(t.typ)));
       for (const c of t.projekte) m.appendChild(el("span", "pill", projektName(c)));
       k.appendChild(m);
       liste.appendChild(k);
     }
+    if (daten.aktualisiert) {
+      const d = new Date(daten.aktualisiert);
+      document.getElementById("stand").textContent = T[lang].stand + ": " + fDatum.format(d) + ", " + fZeit.format(d) + T[lang].uhr;
+    }
   }
 
+  for (const b of document.querySelectorAll("#sprache button")) b.onclick = () => {
+    lang = b.dataset.l;
+    try { localStorage.setItem("lang", lang); } catch (e) {}
+    urlSetzen(); zeichnen();
+  };
+
   zeichnen();
-  if (daten.aktualisiert) document.getElementById("stand").textContent =
-    "Stand: " + fDatum.format(new Date(daten.aktualisiert)) + ", " + fZeit.format(new Date(daten.aktualisiert)) + " Uhr";
 })();
 </script>
 </body>
